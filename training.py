@@ -46,6 +46,7 @@ def run_training(train_file,
                  final_layer=False,
                  use_prototype_loss=False,
                  eval_bucket_path=None,
+                 num_workers=0,
                  few_shot_experiment=False):
     pl.seed_everything(seed=seed)
 
@@ -61,7 +62,7 @@ def run_training(train_file,
         dataloader[split] = torch.utils.data.DataLoader(dataset,
                                                         collate_fn=collate_batch,
                                                         batch_size=batch_size,
-                                                        num_workers=0,
+                                                        num_workers=num_workers,
                                                         pin_memory=True,
                                                         shuffle=split == "train",
                                                         sampler=RandomSampler(dataset,

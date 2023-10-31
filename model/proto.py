@@ -356,8 +356,8 @@ class ProtoModule(pl.LightningModule):
                 score_per_prototype = torch.einsum('bs,abs->ab', self.prototype_vectors,
                                                    weighted_samples_per_prototype)
             else:
-                score_per_prototype = -self.pairwise_dist(self.prototype_vectors.T,
-                                                          weighted_samples_per_prototype.permute(0, 2, 1))
+                score_per_prototype = -self.pairwise_dist(self.prototype_vectors,
+                                                          weighted_samples_per_prototype)
 
             metadata = attention_per_token_and_class, weighted_samples_per_prototype
 
