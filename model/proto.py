@@ -10,6 +10,7 @@ from transformers import AutoModel
 import torch.nn.functional as F
 import torch.nn as nn
 import sys
+from torchmetrics.functional.classification.auroc import _multilabel_auroc_compute
 
 sys.path.insert(0, '..')
 
@@ -77,7 +78,7 @@ class ProtoModule(pl.LightningModule):
 
         # ARCHITECTURE SETUP #
 
-        pl.utilities.seed.seed_everything(seed=seed)
+        pl.seed_everything(seed=seed)
 
         # define distance measure
         self.pairwise_dist = nn.PairwiseDistance(p=2)
@@ -100,7 +101,7 @@ class ProtoModule(pl.LightningModule):
 
             # initialize linear layer for dim reduction
             # reset the seed to make sure linear layer is the same as in preprocessing
-            pl.utilities.seed.seed_everything(seed=seed)
+            pl.seed_everything(seed=seed)
             self.linear = nn.Linear(self.bert_hidden_size, self.hidden_size)
 
         # load prototype vectors
@@ -141,9 +142,7 @@ class ProtoModule(pl.LightningModule):
         for j in range(len(prototype_identity_matrix)):
             prototype_identity_matrix[j, self.prototype_to_class_map[j]] = 1.0 / self.num_prototypes_per_class[
                 self.prototype_to_class_map[j]]
-
-        if self.use_cuda:
-            prototype_identity_matrix = prototype_identity_matrix.cuda()
+        prototype_identity_matrix = prototype_identity_matrix.to(self.device)
 
         return nn.Parameter(prototype_identity_matrix.double(), requires_grad=True)
 
@@ -177,19 +176,22 @@ class ProtoModule(pl.LightningModule):
         return attention_vectors
 
     def setup_metrics(self):
-        self.f1 = torchmetrics.F1(threshold=0.269)
-        self.auroc_micro = metrics.FilteredAUROC(num_classes=self.num_classes, compute_on_step=False, average="micro")
-        self.auroc_macro = metrics.FilteredAUROC(num_classes=self.num_classes, compute_on_step=False, average="macro")
+        self.f1 = torchmetrics.classification.F1Score(task="multilabel", threshold=0.269, num_labels=self.num_classes)
+        self.auroc_micro = torchmetrics.classification.auroc.MultilabelAUROC(num_labels=self.num_classes,
+                                                                             average="micro")
+        self.auroc_macro = torchmetrics.classification.auroc.MultilabelAUROC(num_labels=self.num_classes,
+                                                                             average="macro")
 
         return {"auroc_micro": self.auroc_micro,
                 "auroc_macro": self.auroc_macro,
                 "f1": self.f1}
 
     def setup_extensive_metrics(self):
-        self.pr_curve = metrics.PR_AUC(num_classes=self.num_classes)
+        self.pr_curve = torchmetrics.classification.MultilabelPrecisionRecallCurve(num_labels=self.num_classes)
 
         extensive_metrics = {"pr_curve": self.pr_curve}
 
+        '''
         if self.eval_buckets:
             buckets = self.eval_buckets
 
@@ -256,7 +258,7 @@ class ProtoModule(pl.LightningModule):
                               "auroc_macro_5": self.auroc_macro_5}
 
             extensive_metrics = {**extensive_metrics, **bucket_metrics}
-
+        '''
         return extensive_metrics
 
     def configure_optimizers(self):
@@ -346,13 +348,12 @@ class ProtoModule(pl.LightningModule):
                 weighted_samples_per_class = nn.functional.normalize(weighted_samples_per_class, p=2,
                                                                      dim=self.normalize)
 
-            if self.use_cuda:
-                weighted_samples_per_class = weighted_samples_per_class.cuda()
-                self.num_prototypes_per_class = self.num_prototypes_per_class.cuda()
+            weighted_samples_per_class = weighted_samples_per_class.to(self.device)
+            self.num_prototypes_per_class = self.num_prototypes_per_class.to(self.device)
 
             weighted_samples_per_prototype = weighted_samples_per_class.repeat_interleave(
                 self.num_prototypes_per_class
-                    .long(), dim=1)
+                .long(), dim=1)
 
             if self.dot_product:
                 score_per_prototype = torch.einsum('bs,abs->ab', self.prototype_vectors,
@@ -415,15 +416,13 @@ class ProtoModule(pl.LightningModule):
             batch_size = score_per_prototype.shape[0]
 
             fill_vector = torch.full((batch_size, self.num_classes, self.num_prototypes), fill_value=float("-inf"),
-                                     dtype=score_per_prototype.dtype)
-            if self.use_cuda:
-                fill_vector = fill_vector.cuda()
-                self.prototype_to_class_map = self.prototype_to_class_map.cuda()
+                                     dtype=score_per_prototype.dtype, device=self.device)
+            self.prototype_to_class_map = self.prototype_to_class_map.to(self.device)
 
             group_logits_by_class = fill_vector.scatter_(1,
-                                                         self.prototype_to_class_map.unsqueeze(0).repeat(batch_size,
-                                                                                                         1).unsqueeze(
-                                                             1),
+                                                         self.prototype_to_class_map.unsqueeze(0)
+                                                         .repeat(batch_size, 1)
+                                                         .unsqueeze(1),
                                                          score_per_prototype.unsqueeze(1))
 
             max_logits_per_class = torch.max(group_logits_by_class, dim=2).values
@@ -447,7 +446,7 @@ class ProtoModule(pl.LightningModule):
                 metric = self.train_metrics[metric_name]
                 metric(torch.sigmoid(logits), targets)
 
-    def validation_epoch_end(self, outputs) -> None:
+    def on_validation_epoch_end(self) -> None:
         for metric_name in self.train_metrics:
             metric = self.train_metrics[metric_name]
             self.log(f"val/{metric_name}", metric.compute())
@@ -487,3 +486,8 @@ class ProtoModule(pl.LightningModule):
 
         with open(os.path.join(self.logger.log_dir, 'PR_AUC_score.txt'), 'w') as metrics_file:
             metrics_file.write(f"PR AUC: {pr_auc.cpu().numpy()}\n")
+
+# 1. Select top-10 logits + ground truth
+# 2. Apply Attention Vectors with threshold to extract prediction relevant tokens
+# 3. Retrieve for each predicted class the section from wikipedia, query = selected tokens
+# 4. Classify binary for each retrieved text + selected tokens based on the ground truth

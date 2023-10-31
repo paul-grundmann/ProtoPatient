@@ -47,14 +47,11 @@ def run_training(train_file,
                  use_prototype_loss=False,
                  eval_bucket_path=None,
                  few_shot_experiment=False):
-    pl.utilities.seed.seed_everything(seed=seed)
+    pl.seed_everything(seed=seed)
 
     tokenizer = AutoTokenizer.from_pretrained(pretrained_model)
 
-    if few_shot_experiment:
-        dataset = FilteredDiagnosesDataset
-    else:
-        dataset = OutcomeDiagnosesDataset
+    dataset = OutcomeDiagnosesDataset
 
     train_dataset = dataset(train_file, tokenizer, max_length=max_length, all_codes_path=all_labels_path)
     val_dataset = dataset(val_file, tokenizer, max_length=max_length, all_codes_path=all_labels_path)
@@ -74,7 +71,7 @@ def run_training(train_file,
 
     eval_buckets = load_eval_buckets(eval_bucket_path)
 
-    if model_type is "BERT":
+    if model_type == "BERT":
         model = BertModule(pretrained_model=pretrained_model,
                            num_classes=dataset.get_num_classes(),
                            lr_features=lr_features,
@@ -88,7 +85,7 @@ def run_training(train_file,
                            eval_buckets=eval_buckets
                            )
 
-    elif model_type is "PROTO":
+    elif model_type == "PROTO":
         model = ProtoModule(pretrained_model=pretrained_model,
                             label_order_path=all_labels_path,
                             num_classes=dataset.get_num_classes(),
@@ -137,11 +134,9 @@ def run_training(train_file,
     trainer = pl.Trainer(callbacks=callbacks,
                          logger=tb_logger,
                          default_root_dir=save_dir,
-                         gpus=gpus,
+                         accelerator="auto",
                          check_val_every_n_epoch=check_val_every_n_epoch,
                          deterministic=True,
-                         accelerator="ddp",
-                         resume_from_checkpoint=resume_from_checkpoint
                          )
 
     trainer.fit(model, dataloader["train"], dataloader["val"])

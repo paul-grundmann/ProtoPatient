@@ -79,6 +79,7 @@ class OutcomeDiagnosesDataset(Dataset):
         binary_labels_set = mlb.transform(self.data[label_column].str.split(","))
         self.labels = mlb.classes_
         self.data[self.labels] = binary_labels_set
+        self.data = self.data.copy() # defragment dataframe
 
     def __len__(self):
         return len(self.data)

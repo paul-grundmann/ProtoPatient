@@ -5,7 +5,7 @@ import torchmetrics
 
 from torchmetrics.metric import Metric
 from torchmetrics import AUROC, PrecisionRecallCurve
-from torchmetrics.functional.classification.auroc import _auroc_compute
+from torchmetrics.functional.classification.auroc import _multilabel_auroc_compute
 from torchmetrics.utilities.data import dim_zero_cat
 import logging
 import numpy as np
@@ -16,7 +16,7 @@ class PR_AUC(Metric):
         super().__init__(compute_on_step=compute_on_step, dist_sync_on_step=dist_sync_on_step)
         self.add_state("prauc", default=[], dist_reduce_fx='cat')
         self.pr_curve = PrecisionRecallCurve(num_classes=num_classes).to(self.device)
-        self.auc = torchmetrics.AUC().to(self.device)
+        self.auc = torchmetrics.classification.AUROC().to(self.device)
 
     def update(self, prediction: torch.Tensor, target: torch.Tensor):
         precision, recall, thresholds = self.pr_curve(prediction, target)
