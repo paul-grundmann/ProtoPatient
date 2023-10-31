@@ -177,13 +177,10 @@ class ProtoModule(pl.LightningModule):
 
     def setup_metrics(self):
         self.f1 = torchmetrics.classification.F1Score(task="multilabel", threshold=0.269, num_labels=self.num_classes)
-        self.auroc_micro = torchmetrics.classification.auroc.MultilabelAUROC(num_labels=self.num_classes,
-                                                                             average="micro")
-        self.auroc_macro = torchmetrics.classification.auroc.MultilabelAUROC(num_labels=self.num_classes,
-                                                                             average="macro")
+        self.auroc = torchmetrics.classification.auroc.MultilabelAUROC(num_labels=self.num_classes,
+                                                                             average=None)
 
-        return {"auroc_micro": self.auroc_micro,
-                "auroc_macro": self.auroc_macro,
+        return {"auroc": self.auroc,
                 "f1": self.f1}
 
     def setup_extensive_metrics(self):
