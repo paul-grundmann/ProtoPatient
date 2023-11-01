@@ -8,7 +8,7 @@ from transformers import PreTrainedTokenizer
 import pandas as pd
 import numpy as np
 from sklearn.preprocessing import MultiLabelBinarizer
-
+import ast
 
 def collate_batch(featurized_samples: List[Dict]):
     input_ids = torch.nn.utils.rnn.pad_sequence(
@@ -23,7 +23,8 @@ def collate_batch(featurized_samples: List[Dict]):
              "attention_masks": attention_masks,
              "tokens": [x['tokens'] for x in featurized_samples],
              "targets": np.array([x['target'] for x in featurized_samples]),
-             "sample_ids": [x['sample_id'] for x in featurized_samples]}
+             #"sample_ids": [x['sample_id'] for x in featurized_samples]
+             }
 
     if 'token_type_ids' in featurized_samples[0]:
         token_type_ids = torch.nn.utils.rnn.pad_sequence(
@@ -46,7 +47,8 @@ def sample_to_features_multilabel(sample: pd.Series, tokenizer: PreTrainedTokeni
                          "attention_mask": tokenized["attention_mask"],
                          "tokens": tokenized.encodings[0].tokens,
                          "target": sample[labels].to_numpy().astype(int),
-                         "sample_id": sample["id"]}
+                         #"sample_id": sample["id"]
+                         }
 
     if "token_type_ids" in tokenized:
         featurized_sample["token_type_ids"] = tokenized["token_type_ids"]
@@ -62,13 +64,15 @@ class OutcomeDiagnosesDataset(Dataset):
                  all_codes_path,
                  max_length=512,
                  text_column='text',
-                 label_column='short_codes'):
+                 label_column='labels'):
         self.tokenizer: PreTrainedTokenizer = tokenizer
         self.max_length = max_length
         self.text_column = text_column
 
         self.data: DataFrame = pd.read_csv(file_path, dtype={"id": str})
-
+        #mimic-iv compatibility
+        if label_column == "labels":
+            self.data.labels = self.data.labels.apply(lambda x: ",".join(ast.literal_eval(x)))
         # binarize labels
         mlb = MultiLabelBinarizer()
 

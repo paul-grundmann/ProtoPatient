@@ -18,11 +18,11 @@ def run_training(train_file,
                  val_file,
                  test_file,
                  batch_size=10,
-                 gpus=1,
+                 gpus=4,
                  lr_prototypes=1e-3,
-                 lr_others=2e-2,
-                 lr_features=2e-6,
-                 num_warmup_steps=100,
+                 lr_others=1e-2,
+                 lr_features=5e-6,
+                 num_warmup_steps=5000,
                  max_length=512,
                  num_training_steps=5000,
                  check_val_every_n_epoch=1,
@@ -37,7 +37,7 @@ def run_training(train_file,
                  project_n_batches=1,
                  use_attention=True,
                  dot_product=False,
-                 reduce_hidden_size=None,
+                 reduce_hidden_size=256,
                  prototype_vector_path=None,
                  attention_vector_path=None,
                  all_labels_path=None,
@@ -46,7 +46,7 @@ def run_training(train_file,
                  final_layer=False,
                  use_prototype_loss=False,
                  eval_bucket_path=None,
-                 num_workers=0,
+                 num_workers=8,
                  few_shot_experiment=False):
     pl.seed_everything(seed=seed)
 
@@ -117,13 +117,13 @@ def run_training(train_file,
     tb_logger = TensorBoardLogger(save_dir, name="lightning_logs")
 
     lr_monitor = LearningRateMonitor(logging_interval='step')
-    checkpoint_callback = ModelCheckpoint(monitor='val/auroc_macro',
+    checkpoint_callback = ModelCheckpoint(monitor='val/auroc',
                                           mode='max',
                                           save_last=True,
                                           save_top_k=1,
                                           dirpath=os.path.join(tb_logger.log_dir, 'checkpoints'),
                                           filename='ckpt-{epoch:02d}')
-    early_stop_callback = EarlyStopping(monitor="val/auroc_macro",
+    early_stop_callback = EarlyStopping(monitor="val/auroc",
                                         patience=25,
                                         mode="max")
 
@@ -138,6 +138,7 @@ def run_training(train_file,
                          accelerator="auto",
                          check_val_every_n_epoch=check_val_every_n_epoch,
                          deterministic=True,
+                         strategy='ddp_find_unused_parameters_true'
                          )
 
     trainer.fit(model, dataloader["train"], dataloader["val"])

@@ -391,6 +391,7 @@ class ProtoModule(pl.LightningModule):
         else:
             attention_per_token_and_class = F.softmax(score_per_token_and_class, dim=2)
 
+
         class_weighted_tokens = torch.einsum('ikjm,ikj->ikjm',
                                              batch_samples.unsqueeze(dim=1).expand(batch_samples.size(0),
                                                                                    self.num_classes,
@@ -441,12 +442,16 @@ class ProtoModule(pl.LightningModule):
 
             for metric_name in self.train_metrics:
                 metric = self.train_metrics[metric_name]
-                metric(torch.sigmoid(logits), targets)
+                metric.update(torch.sigmoid(logits), targets)
+
 
     def on_validation_epoch_end(self) -> None:
         for metric_name in self.train_metrics:
             metric = self.train_metrics[metric_name]
-            self.log(f"val/{metric_name}", metric.compute())
+            score = metric.compute()
+            if metric_name == "auroc":
+                score = score[score > 0].mean()
+            self.log(f"val/{metric_name}", score, sync_dist=True)
             metric.reset()
 
     def test_step(self, batch, batch_idx):
@@ -458,7 +463,7 @@ class ProtoModule(pl.LightningModule):
 
             for metric_name in self.all_metrics:
                 metric = self.all_metrics[metric_name]
-                metric(preds, targets)
+                metric.update(preds, targets)
 
         return preds, targets
 
@@ -467,6 +472,8 @@ class ProtoModule(pl.LightningModule):
         for metric_name in self.all_metrics:
             metric = self.all_metrics[metric_name]
             value = metric.compute()
+            if metric_name == "auroc":
+                value = value[value > 0].mean()
             self.log(f"test/{metric_name}", value)
 
             with open(os.path.join(log_dir, 'test_metrics.txt'), 'a') as metrics_file:
