@@ -70,11 +70,10 @@ class BertModule(pl.LightningModule):
 
     def setup_metrics(self):
         self.f1 = torchmetrics.F1(threshold=0.269)
-        self.auroc_micro = metrics.FilteredAUROC(num_classes=self.num_classes, compute_on_step=False, average="micro")
-        self.auroc_macro = metrics.FilteredAUROC(num_classes=self.num_classes, compute_on_step=False, average="macro")
+        self.auroc = torchmetrics.classification.auroc.MultilabelAUROC(num_labels=self.num_classes,
+                                                                             average=None)
 
-        return {"auroc_micro": self.auroc_micro,
-                "auroc_macro": self.auroc_macro,
+        return {"auroc": self.auroc,
                 "f1": self.f1}
 
     def setup_extensive_metrics(self):
@@ -261,7 +260,10 @@ class BertModule(pl.LightningModule):
     def validation_epoch_end(self, outputs) -> None:
         for metric_name in self.train_metrics:
             metric = self.train_metrics[metric_name]
-            self.log(f"val/{metric_name}", metric.compute())
+            score = metric.compute()
+            if metric_name == "auroc":
+                score = score[score > 0].mean()
+            self.log(f"val/{metric_name}", )
             metric.reset()
 
     def test_step(self, batch, batch_idx):
@@ -281,6 +283,8 @@ class BertModule(pl.LightningModule):
         for metric_name in self.all_metrics:
             metric = self.all_metrics[metric_name]
             value = metric.compute()
+            if metric_name == "auroc":
+                value = value[value > 0]
             self.log(f"test/{metric_name}", value)
 
             with open(os.path.join(self.logger.log_dir, 'test_metrics.txt'), 'a') as metrics_file:
