@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: remote-work
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: remote-work
+  template:
+    metadata:
+      labels:
+        app: remote-work
+    spec:
+      containers:
+      - name: remote-work
+        image: registry.datexis.com/pgrundmann/proto
+        command: ["/usr/sbin/sshd"]
+        args:
+          - "-D"
+        volumeMounts:
+          - name: dshm
+            mountPath: /dev/shm
+          - name: cluster-ssh
+            mountPath: /root/ssh-key
+          - name: proto-pvc
+            mountPath: /pvc
+        ports:
+          - containerPort: 22
+        lifecycle:
+          postStart:
+            exec:
+              command: ["/bin/sh", "-c", "cat /root/ssh-key/ssh-publickey >> /root/.ssh/authorized_keys"]
+        resources:
+          requests:
+            cpu: "1"
+            memory: "2Gi"
+            nvidia.com/gpu: "1"
+          limits:
+            memory: "512Gi"
+            nvidia.com/gpu: "1"
+        env:
+          - name: LANG
+            value: 'C.UTF-8'
+      nodeSelector:
+        gpu: v100
+      imagePullSecrets:
+      - name: private-registry-auth
+      volumes:
+        - name: cluster-ssh
+          secret:
+            secretName: cluster-ssh
+            defaultMode: 256
+        - name: proto-pvc
+          persistentVolumeClaim:
+            claimName: proto-pvc
+        - name: dshm
+          emptyDir:
+            medium: Memory

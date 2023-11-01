@@ -177,13 +177,13 @@ class ProtoModule(pl.LightningModule):
 
     def setup_metrics(self):
         self.f1 = torchmetrics.classification.F1Score(task="multilabel", threshold=0.269, num_labels=self.num_classes)
-        self.auroc_micro = torchmetrics.classification.auroc.MultilabelAUROC(num_labels=self.num_classes,
-                                                                             average="micro")
         self.auroc_macro = torchmetrics.classification.auroc.MultilabelAUROC(num_labels=self.num_classes,
                                                                              average="macro")
+        self.auroc_micro = torchmetrics.classification.auroc.MultilabelAUROC(num_labels=self.num_classes,
+                                                                             average="micro")
 
-        return {"auroc_micro": self.auroc_micro,
-                "auroc_macro": self.auroc_macro,
+        return {"auroc_macro": self.auroc_macro,
+                "auroc_micro": self.auroc_micro,
                 "f1": self.f1}
 
     def setup_extensive_metrics(self):
@@ -298,7 +298,7 @@ class ProtoModule(pl.LightningModule):
         if self.loss == "BCE":
             train_loss = torch.nn.functional.binary_cross_entropy_with_logits(logits, target=targets.float())
         else:
-            train_loss = torch.nn.MultiLabelSoftMarginLoss()(input=torch.sigmoid(logits), target=targets)
+            train_loss = torch.nn.functional.multilabel_soft_margin_loss(input=torch.sigmoid(logits), target=targets)
 
         self.log('train_loss', train_loss, on_epoch=True)
 
@@ -313,11 +313,6 @@ class ProtoModule(pl.LightningModule):
         attention_mask = batch["attention_masks"]
         input_ids = batch["input_ids"]
         token_type_ids = batch["token_type_ids"]
-
-        if attention_mask.device != self.device:
-            attention_mask = attention_mask.to(self.device)
-            input_ids = input_ids.to(self.device)
-            token_type_ids = token_type_ids.to(self.device)
 
         bert_output = self.bert(input_ids=input_ids,
                                 attention_mask=attention_mask,
@@ -407,11 +402,7 @@ class ProtoModule(pl.LightningModule):
 
     def get_logits_per_class(self, score_per_prototype):
         if self.final_layer:
-            if score_per_prototype.device != self.final_linear.device:
-                score_per_prototype = score_per_prototype.to(self.final_linear.device)
-
             return torch.matmul(score_per_prototype, self.final_linear)
-
         else:
             batch_size = score_per_prototype.shape[0]
 
@@ -437,14 +428,10 @@ class ProtoModule(pl.LightningModule):
         return prototype_loss
 
     def validation_step(self, batch, batch_idx):
-        with torch.no_grad():
-            targets = torch.tensor(batch['targets'], device=self.device)
-
-            logits, _ = self(batch)
-
-            for metric_name in self.train_metrics:
-                metric = self.train_metrics[metric_name]
-                metric(torch.sigmoid(logits), targets)
+        logits, _ = self(batch)
+        for metric_name in self.train_metrics:
+            metric = self.train_metrics[metric_name]
+            metric.update(logits, batch["targets"])
 
     def on_validation_epoch_end(self) -> None:
         for metric_name in self.train_metrics:
@@ -457,7 +444,7 @@ class ProtoModule(pl.LightningModule):
             targets = torch.tensor(batch['targets'], device=self.device)
 
             logits, _ = self(batch)
-            preds = torch.sigmoid(logits)
+            preds = logits
 
             for metric_name in self.all_metrics:
                 metric = self.all_metrics[metric_name]

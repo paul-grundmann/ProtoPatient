@@ -47,16 +47,17 @@ def run_training(train_file,
                  use_prototype_loss=False,
                  eval_bucket_path=None,
                  num_workers=0,
-                 few_shot_experiment=False):
+                 few_shot_experiment=False,
+                 label_column="short_codes"):
     pl.seed_everything(seed=seed)
 
-    tokenizer = AutoTokenizer.from_pretrained(pretrained_model)
+    tokenizer = AutoTokenizer.from_pretrained(pretrained_model, use_fast=True)
 
     dataset = OutcomeDiagnosesDataset
 
-    train_dataset = dataset(train_file, tokenizer, max_length=max_length, all_codes_path=all_labels_path)
-    val_dataset = dataset(val_file, tokenizer, max_length=max_length, all_codes_path=all_labels_path)
-    test_dataset = dataset(test_file, tokenizer, max_length=max_length, all_codes_path=all_labels_path)
+    train_dataset = dataset(train_file, tokenizer, max_length=max_length, all_codes_path=all_labels_path, label_column=label_column)
+    val_dataset = dataset(val_file, tokenizer, max_length=max_length, all_codes_path=all_labels_path, label_column=label_column)
+    test_dataset = dataset(test_file, tokenizer, max_length=max_length, all_codes_path=all_labels_path, label_column=label_column)
     dataloader = {}
     for split, dataset in zip(["train", "val", "test"], [train_dataset, val_dataset, test_dataset]):
         dataloader[split] = torch.utils.data.DataLoader(dataset,
@@ -131,13 +132,15 @@ def run_training(train_file,
     if projector_callback:
         embedding_projector_callback = ProjectorCallback(dataloader["train"], project_n_batches=project_n_batches)
         callbacks.append(embedding_projector_callback)
-
+    model = torch.compile(model)
     trainer = pl.Trainer(callbacks=callbacks,
                          logger=tb_logger,
                          default_root_dir=save_dir,
                          accelerator="auto",
+                         precision="bf16-mixed" if torch.cuda.is_available() else "32",
                          check_val_every_n_epoch=check_val_every_n_epoch,
                          deterministic=True,
+                         num_sanity_val_steps=-1
                          )
 
     trainer.fit(model, dataloader["train"], dataloader["val"])

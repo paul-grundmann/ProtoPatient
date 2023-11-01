@@ -1,0 +1,60 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: proto-patient-training
+  labels:
+    app: proto-patient-training
+spec:
+  template:
+    metadata:
+      labels:
+        app: proto-patient-training
+    spec:
+      containers:
+        - name: proto-patient-training
+          image: registry.datexis.com/pgrundmann/proto
+          command: [
+            "python", "training.py",
+            "--model_type", "PROTO",
+            "--train_file", "/pvc/data/mimic-iv/admission_mimiciv_dia_fold_1_train.csv",
+            "--val_file", "/pvc/data/mimic-iv/admission_mimiciv_dia_fold_1_dev.csv",
+            "--test_file", "/pvc/data/mimic-iv/admission_mimiciv_dia_fold_1_test.csv",
+            "--num_warmup_steps", "5000",
+            "--num_training_steps", "5000",
+            "--lr_features", "0.000005",
+            "--lr_prototypes", "0.001",
+            "--num_workers", "16",
+            "--lr_others", "0.001",
+            "--use_attention", "True",
+            "--reduce_hidden_size", "256",
+            "--label_column", "labels",
+            "--num_workers", "32",
+            "--all_labels_path", "/pvc/data/mimic-iv/ALL_3_DIGITS_CODES_MIMIC_IV.txt",
+            "--save_dir", "/pvc/models/proto/",
+          ]
+          env:
+            - name: LANG
+              value: 'C.UTF-8'
+          resources:
+            requests:
+              cpu: "2"
+            limits:
+              nvidia.com/gpu: "1"
+              memory: 30Gi
+          volumeMounts:
+            - name: proto-pvc
+              mountPath: /pvc
+            - name: dshm
+              mountPath: /dev/shm
+      nodeSelector:
+        gpu: a100
+      volumes:
+        - name: proto-pvc
+          persistentVolumeClaim:
+            claimName: proto-pvc
+        - name: dshm
+          emptyDir:
+            medium: Memory
+      imagePullSecrets:
+        - name: private-registry-auth
+      restartPolicy: Never

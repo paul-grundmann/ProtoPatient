@@ -9,7 +9,6 @@ import pandas as pd
 import numpy as np
 from sklearn.preprocessing import MultiLabelBinarizer
 
-
 def collate_batch(featurized_samples: List[Dict]):
     input_ids = torch.nn.utils.rnn.pad_sequence(
         [torch.tensor(x['input_ids']) for x in featurized_samples],
@@ -22,7 +21,7 @@ def collate_batch(featurized_samples: List[Dict]):
     batch = {"input_ids": input_ids,
              "attention_masks": attention_masks,
              "tokens": [x['tokens'] for x in featurized_samples],
-             "targets": np.array([x['target'] for x in featurized_samples]),
+             "targets": torch.tensor(np.array([x['target'] for x in featurized_samples])),
              "sample_ids": [x['sample_id'] for x in featurized_samples]}
 
     if 'token_type_ids' in featurized_samples[0]:
@@ -79,7 +78,7 @@ class OutcomeDiagnosesDataset(Dataset):
         binary_labels_set = mlb.transform(self.data[label_column].str.split(","))
         self.labels = mlb.classes_
         self.data[self.labels] = binary_labels_set
-        self.data = self.data.copy() # defragment dataframe
+        self.data = self.data.copy()
 
     def __len__(self):
         return len(self.data)

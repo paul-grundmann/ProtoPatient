@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: proto-tensorboard
+  labels:
+    app: proto-tensorboard
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: proto-tensorboard
+  template:
+    metadata:
+      labels:
+        app: proto-tensorboard
+    spec:
+      containers:
+        - name: proto-tensorboard
+          image: registry.datexis.com/pgrundmann/tensorboard
+          command: ["tensorboard", "--logdir=/pvc/models/", "--host", "0.0.0.0"]
+          ports:
+          -  containerPort: 6006
+          resources:
+            requests:
+              cpu: "0.01"
+            limits:
+              memory: "8G"
+          volumeMounts:
+            - name: proto-pvc
+              mountPath: /pvc
+      volumes:
+        - name: proto-pvc
+          persistentVolumeClaim:
+            claimName: proto-pvc
+      imagePullSecrets:
+        - name: private-registry-auth
