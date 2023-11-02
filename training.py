@@ -46,7 +46,7 @@ def run_training(train_file,
                  final_layer=False,
                  use_prototype_loss=False,
                  eval_bucket_path=None,
-                 num_workers=0,
+                 num_workers=8,
                  few_shot_experiment=False,
                  label_column="short_codes"):
     pl.seed_everything(seed=seed)

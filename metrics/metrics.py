@@ -76,7 +76,7 @@ class FilteredAUROC(torchmetrics.classification.auroc.MultilabelAUROC):
         num_filtered_cols = torch.count_nonzero(mask == False)
         logging.info(f"{num_filtered_cols} columns not considered for ROC AUC calculation!")
 
-        multilabel_auroc(
+        return multilabel_auroc(
             filtered_preds,
             filtered_target,
             self.num_labels - num_filtered_cols.item(),
