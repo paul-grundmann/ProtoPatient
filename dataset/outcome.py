@@ -46,7 +46,7 @@ def sample_to_features_multilabel(sample: pd.Series, tokenizer: PreTrainedTokeni
                          "attention_mask": tokenized["attention_mask"],
                          "tokens": tokenized.encodings[0].tokens,
                          "target": sample[labels].to_numpy().astype(int),
-                         #"sample_id": sample["id"]
+                         "sample_id": sample["hadm_id"]
                          }
 
     if "token_type_ids" in tokenized:
@@ -78,7 +78,8 @@ class OutcomeDiagnosesDataset(Dataset):
         with open(all_codes_path) as all_codes_file:
             all_codes = all_codes_file.read().split(" ")
 
-        mlb.fit([all_codes])
+
+        mlb.fit(np.array(all_codes).reshape(-1,1))
         binary_labels_set = mlb.transform(self.data[label_column].str.split(","))
         self.labels = mlb.classes_
         self.data[self.labels] = binary_labels_set

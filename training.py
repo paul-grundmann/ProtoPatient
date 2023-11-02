@@ -17,7 +17,7 @@ from utils import ProjectorCallback, load_eval_buckets
 def run_training(train_file,
                  val_file,
                  test_file,
-                 batch_size=10,
+                 batch_size=5,
                  gpus=1,
                  lr_prototypes=1e-3,
                  lr_others=1e-2,
@@ -118,13 +118,13 @@ def run_training(train_file,
     tb_logger = TensorBoardLogger(save_dir, name="lightning_logs")
 
     lr_monitor = LearningRateMonitor(logging_interval='step')
-    checkpoint_callback = ModelCheckpoint(monitor='val/auroc',
+    checkpoint_callback = ModelCheckpoint(monitor='val/macro_auroc',
                                           mode='max',
                                           save_last=True,
                                           save_top_k=1,
                                           dirpath=os.path.join(tb_logger.log_dir, 'checkpoints'),
                                           filename='ckpt-{epoch:02d}')
-    early_stop_callback = EarlyStopping(monitor="val/auroc",
+    early_stop_callback = EarlyStopping(monitor="val/macro_auroc",
                                         patience=25,
                                         mode="max")
 
@@ -140,7 +140,8 @@ def run_training(train_file,
                          precision="bf16-mixed" if torch.cuda.is_available() else "32",
                          check_val_every_n_epoch=check_val_every_n_epoch,
                          deterministic=True,
-                         num_sanity_val_steps=-1
+                         num_sanity_val_steps=0,
+                         strategy='ddp_find_unused_parameters_true'
                          )
 
     trainer.fit(model, dataloader["train"], dataloader["val"])
