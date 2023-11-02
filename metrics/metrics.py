@@ -5,7 +5,7 @@ import torchmetrics
 
 from torchmetrics.metric import Metric
 from torchmetrics import AUROC, PrecisionRecallCurve
-from torchmetrics.functional.classification.auroc import _multilabel_auroc_compute
+from torchmetrics.functional.classification.auroc import _multilabel_auroc_compute, multilabel_auroc
 from torchmetrics.utilities.data import dim_zero_cat
 import logging
 import numpy as np
@@ -63,32 +63,25 @@ def calculate_pr_auc(prediction: torch.Tensor, target: torch.Tensor, num_classes
     return pr_auc.detach()
 
 
-class FilteredAUROC(AUROC):
+class FilteredAUROC(torchmetrics.classification.auroc.MultilabelAUROC):
     def compute(self) -> torch.Tensor:
 
         preds = dim_zero_cat(self.preds)
         target = dim_zero_cat(self.target)
 
-        mask = np.ones((self.num_classes), dtype=bool)
-        for c in range(self.num_classes):
-            if torch.max(target[:, c]) == 0:
-                mask[c] = False
+        mask = target.sum(0) > 0
         filtered_target = target[:, mask]
         filtered_preds = preds[:, mask]
 
-        num_filtered_cols = np.count_nonzero(mask == False)
+        num_filtered_cols = torch.count_nonzero(mask == False)
         logging.info(f"{num_filtered_cols} columns not considered for ROC AUC calculation!")
 
-        return _auroc_compute(
+        multilabel_auroc(
             filtered_preds,
             filtered_target,
-            self.mode,
-            self.num_classes - num_filtered_cols,
-            self.pos_label,
+            self.num_labels - num_filtered_cols.item(),
             self.average,
-            self.max_fpr,
         )
-
 
 class FilteredAUROCPerBucket(AUROC):
     def __init__(
