@@ -10,7 +10,7 @@ import torch.nn.functional as F
 import torch.nn as nn
 import sys
 from torchmetrics.functional.classification.auroc import _multilabel_auroc_compute
-
+from metrics.metrics import FilteredAUROC
 sys.path.insert(0, '..')
 
 import utils
@@ -175,10 +175,12 @@ class ProtoModule(pl.LightningModule):
 
     def setup_metrics(self):
         self.f1 = torchmetrics.classification.F1Score(task="multilabel", threshold=0.269, num_labels=self.num_classes)
-        self.auroc = torchmetrics.classification.auroc.MultilabelAUROC(num_labels=self.num_classes,
-                                                                             average=None)
+        self.macro_auroc = FilteredAUROC(num_labels=self.num_classes, average="macro")
 
-        return {"auroc": self.auroc,
+        self.micro_auroc = FilteredAUROC(num_labels=self.num_classes,  average="micro")                                                                     
+
+        return {"macro_auroc": self.macro_auroc,
+                "micro_auroc": self.micro_auroc,    
                 "f1": self.f1}
 
     def setup_extensive_metrics(self):
@@ -450,35 +452,29 @@ class ProtoModule(pl.LightningModule):
             metric = self.train_metrics[metric_name]
             metric.update(logits, batch["targets"])
 
+
     def on_validation_epoch_end(self) -> None:
         for metric_name in self.train_metrics:
             metric = self.train_metrics[metric_name]
             score = metric.compute()
-            if metric_name == "auroc":
-                score = score[score > 0].mean()
             self.log(f"val/{metric_name}", score, sync_dist=True)
             metric.reset()
 
     def test_step(self, batch, batch_idx):
         with torch.no_grad():
             targets = torch.tensor(batch['targets'], device=self.device)
-
             logits, _ = self(batch)
-            preds = logits
-
             for metric_name in self.all_metrics:
-                metric = self.all_metrics[metric_name]
-                metric.update(preds, targets)
+                metric = self.train_metrics[metric_name]
+                metric.update(logits, batch["targets"])
 
-        return preds, targets
+        return logits, targets
 
     def test_epoch_end(self, outputs) -> None:
         log_dir = self.logger.log_dir
         for metric_name in self.all_metrics:
             metric = self.all_metrics[metric_name]
             value = metric.compute()
-            if metric_name == "auroc":
-                value = value[value > 0].mean()
             self.log(f"test/{metric_name}", value)
 
             with open(os.path.join(log_dir, 'test_metrics.txt'), 'a') as metrics_file:
@@ -496,7 +492,6 @@ class ProtoModule(pl.LightningModule):
         with open(os.path.join(self.logger.log_dir, 'PR_AUC_score.txt'), 'w') as metrics_file:
             metrics_file.write(f"PR AUC: {pr_auc.cpu().numpy()}\n")
 
-# 1. Select top-10 logits + ground truth
-# 2. Apply Attention Vectors with threshold to extract prediction relevant tokens
+# 1. Select top-10 logits + ground truthpreds, targetshold to extract prediction relevant tokens
 # 3. Retrieve for each predicted class the section from wikipedia, query = selected tokens
 # 4. Classify binary for each retrieved text + selected tokens based on the ground truth
