@@ -43,7 +43,7 @@ spec:
           - name: LANG
             value: 'C.UTF-8'
       nodeSelector:
-        gpu: v100
+        gpu: h100
       imagePullSecrets:
       - name: private-registry-auth
       volumes:

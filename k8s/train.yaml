@@ -21,6 +21,7 @@ spec:
             "--test_file", "/pvc/data/mimic-iv/admission_mimiciv_dia_fold_1_test.csv",
             "--num_warmup_steps", "5000",
             "--num_training_steps", "5000",
+            "--batch_size", "16",
             "--lr_features", "0.000005",
             "--lr_prototypes", "0.001",
             "--num_workers", "16",

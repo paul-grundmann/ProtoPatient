@@ -1,6 +1,5 @@
 import logging
 import os
-
 import numpy as np
 import pytorch_lightning as pl
 import torchmetrics
@@ -23,7 +22,6 @@ logging.basicConfig(
     level=logging.INFO)
 
 logger = logging.getLogger()
-
 
 class ProtoModule(pl.LightningModule):
 
@@ -361,12 +359,34 @@ class ProtoModule(pl.LightningModule):
 
         logits = self.get_logits_per_class(score_per_prototype)
 
+        # for each class, select the relevant tokens above a certain threshold
+        threshold = 0.23
+        PAD_VAL=0
+        retrieval_token_mask = attention_per_token_and_class.clone()
+        retrieval_tokens = torch.sigmoid(retrieval_token_mask)
+        retrieval_tokens[retrieval_tokens <= threshold] = 0
+        retrieval_tokens[retrieval_tokens > threshold] = 1
+        retrieval_tokens = retrieval_tokens.bool()
+        lengths = torch.sum(retrieval_tokens, dim=-1)
+        query_attn_mask = torch.ones((lengths.shape[0]*lengths.shape[1],torch.max(lengths)), dtype=torch.bool, device=input_ids.device)
+        queries = []
+        for s in range(attention_per_token_and_class.shape[0]):
+            for i in range(attention_per_token_and_class.shape[1]): # for each class select the relevant tokens and create the query
+                queries.append(input_ids[s,0:lengths[s,i]])
+                query_attn_mask[s*i+i,0:lengths[s,i]] = 1
+
+        queries = torch.nn.utils.rnn.pad_sequence(queries, batch_first=True, padding_value=PAD_VAL)
+
+        # for every class and every token -> retrieve matching passage from corresponding ICD articles (BS*NUM_CLASSES queries)
+
+        # Build input for verification model (query + retrieved passage) (tokenize and move to GPU)
+
+        # Run through verification model
+
+        # for each example and query, retrieve a matching part of an article about the respective disease, tokenize and classify
         return logits, metadata
 
     def calculate_token_class_attention(self, batch_samples, class_attention_vectors, mask=None):
-        if class_attention_vectors.device != batch_samples.device:
-            class_attention_vectors = class_attention_vectors.to(batch_samples.device)
-
         score_per_token_and_class = torch.einsum('ikj,mj->imk', batch_samples, class_attention_vectors)
 
         if mask is not None:
